@@ -44,6 +44,8 @@ class UKObstaclesTest(TestCase):
                   "532222.28N": 53.37285555555555,
                   "0002811.05E": 0.46973611111111113,
                   "532222N": 53.37277777777778,
+                  "5464343N": None,
+                  "-432532.43E": None,
                   "toto": None}
         for coord, val in coords.items():
             with self.subTest("Parsing %s" % coord):
