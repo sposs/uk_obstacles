@@ -108,6 +108,12 @@ def create_table(conn):
     cursor = conn.cursor()
     cursor.execute(create_table_query)
 
+    for row_index in range(1, sheet.nrows):
+        row_values = sheet.row_values(row_index)
+        insert_query = "INSERT INTO Obstacles VALUES ({})".format(", ".join("?" * len(row_values)))
+        cursor.execute(insert_query, row_values)
+
+
     conn.commit()
     conn.close()
 
