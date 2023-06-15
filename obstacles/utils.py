@@ -104,13 +104,13 @@ def create_table(conn):
     column_names = sheet.row_values(0)
 
     create_table_query = "CREATE TABLE IF NOT EXISTS obstacles ({})".format(", ".join(["'{}' TEXT".format(col) for col in column_names]))
-    conn = sqlite3.connect("obstacles_database.db")
+    conn = sqlite3.connect("uk_obstacles.db")
     cursor = conn.cursor()
     cursor.execute(create_table_query)
 
     for row_index in range(1, sheet.nrows):
         row_values = sheet.row_values(row_index)
-        insert_query = "INSERT INTO Obstacles VALUES ({})".format(", ".join("?" * len(row_values)))
+        insert_query = "INSERT INTO obstacles VALUES ({})".format(", ".join("?" * len(row_values)))
         cursor.execute(insert_query, row_values)
 
 
@@ -145,7 +145,7 @@ def save_objects(items: List[Obstacle], file_name: str) -> str:
     cursor = conn.cursor()
 
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS ObstacleTable (
+        CREATE TABLE IF NOT EXISTS obstacles (
             name TEXT,
             type TEXT,
             lat REAL,
@@ -157,7 +157,7 @@ def save_objects(items: List[Obstacle], file_name: str) -> str:
 
     for item in items:
         cursor.execute("""
-            INSERT INTO ObstacleTable (name, type, lat, lon, elevation, height)
+            INSERT INTO obstacles (name, type, lat, lon, elevation, height)
             VALUES (?, ?, ?, ?, ?, ?)
         """, (item.name, item.type, item.lat, item.lon, item.elevation, item.height))
 
