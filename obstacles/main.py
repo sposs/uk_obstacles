@@ -1,6 +1,6 @@
 from argparse import ArgumentParser
 
-from obstacles.utils import download_file, get_items, save_objects
+from utils import download_file, get_items, save_objects
 
 
 def main(args):

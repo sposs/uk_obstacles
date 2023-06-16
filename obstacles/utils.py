@@ -6,7 +6,6 @@ Author: Candas Kuran
 Date: 13.06.23
 """
 import tempfile
-import re
 from typing import List, Union
 
 import xlrd
@@ -21,7 +20,7 @@ class Obstacle(object):
     """
     Container class (incomplete) to be used for temporary obstacle storage.
     """
-    def __init__(self, name: str, type: str, lat: float, lon: float, elevation: float, height: float):
+    def __init__(self, name: str = None , type: str = None, lat: float = None, lon: float = None, elevation: float = None, height: float = None):
         self.name = name
         self.type = type
         self.lat = lat
@@ -46,6 +45,7 @@ def download_file() -> str:
     Download a file to a temporary directory
     :return: path to file
     """
+    # file_name = None
     url = "https://download.airnavigation.aero/python/obstacles/"
     response = requests.get(url)
     soup = BeautifulSoup(response.content, "html.parser")
@@ -56,6 +56,7 @@ def download_file() -> str:
     for a_tag in soup.find_all("a"):
         href = a_tag.get("href")
         if href == target_href:
+            # if is_xls(a_tag):
             target_a_tag = a_tag
             break
 
@@ -64,7 +65,6 @@ def download_file() -> str:
         response = requests.get(excel_link) 
         file_name = os.path.join(tempfile.gettempdir(), target_a_tag["href"])   
         # pour trouver le nom du fichier 
-        file_name = target_a_tag["href"]
         # write e binary = wb
         with open(file_name, "wb") as f:
             f.write(response.content)
@@ -72,7 +72,7 @@ def download_file() -> str:
     else:
         print("le fichier n'a pas pu trouver sur ce site internet!")
 
-    return
+    return file_name
 
 
 def parse_coord(coord: str) -> Union[float, None]:
@@ -85,7 +85,46 @@ def parse_coord(coord: str) -> Union[float, None]:
     :param coord: a coordinate as string
     :return: float or None
     """
-    return
+    valeur = coord[-1]
+    decimal_degrees = None
+
+    corde = coord.split(".")
+    corde1 = corde[0]
+    corde2 = coord[0]
+    
+    if valeur in ['N','S','W','E'] and corde2 == "-":
+        return None
+    
+    elif valeur in ['N', 'S'] and len(corde1) < 8:
+        degrees = float(coord[0:2])
+        minutes = float(coord[2:4])
+        seconds = float(coord[4:-1])
+
+        decimal_degrees = degrees + minutes / 60 + seconds / 3600  
+
+    
+    elif valeur in ['E', 'W']:
+        if valeur in ['E']:
+            degrees = float(coord[0:3])
+            minutes = float(coord[3:5])
+            seconds = float(coord[5:-1])
+
+            decimal_degrees = degrees + minutes / 60 + seconds / 3600
+        else:
+            degrees = float(coord[0:3])
+            minutes = float(coord[3:5])
+            seconds = float(coord[5:-1])
+
+            decimal_degrees = degrees + minutes / 60 + seconds / 3600
+            decimal_degrees *= -1
+
+    elif valeur in ["S", "W"] and decimal_degrees is not None:
+        decimal_degrees *= -1
+
+    
+    return decimal_degrees
+     
+    
 
 
 def get_items(path: str) -> List[Obstacle]:
@@ -93,25 +132,44 @@ def get_items(path: str) -> List[Obstacle]:
     Extract some Obstacles from the provided local path
     :param path: input path to the local copy of the file.
     """
-    return
+    workbook = xlrd.open_workbook(path)
+    sheet = workbook.sheet_by_name("All")
+
+    column_names = sheet.row_values(0)
+    obstacles_list = []
+    for row_index in range(1, sheet.nrows):
+        row_values = sheet.row_values(row_index)
+        #pour séparer les valeurs lat et lon
+        coord = row_values[2].split("\n")
+        lat = parse_coord(coord[0])
+        lon = parse_coord(coord[1])
+        # convertion FT => M
+        elevation = float(row_values[3].split(" ")[0]) * 0.3048
+        height = float(row_values[4].split(" ")[0]) * 0.3048
+        obstacle = Obstacle(name=row_values[0], type=row_values[1].split("\n")[0], lat=lat, lon=lon, elevation=elevation, height=height)
+        obstacles_list.append(obstacle)
+    return obstacles_list
+    
 
 
 def create_table(conn):
     """Create the table structure given the SQlite connection"""
-    workbook = xlrd.open_workbook("C:\Users\candas\Desktop\projet\VFR_Obstacles_2023_05_18_CRC_68F19134.xls")
-    sheet = workbook.sheet_by_name("All")
-
-    column_names = sheet.row_values(0)
-
-    create_table_query = "CREATE TABLE IF NOT EXISTS obstacles ({})".format(", ".join(["'{}' TEXT".format(col) for col in column_names]))
+    
     conn = sqlite3.connect("uk_obstacles.db")
     cursor = conn.cursor()
-    cursor.execute(create_table_query)
 
-    for row_index in range(1, sheet.nrows):
-        row_values = sheet.row_values(row_index)
-        insert_query = "INSERT INTO obstacles VALUES ({})".format(", ".join("?" * len(row_values)))
-        cursor.execute(insert_query, row_values)
+    create_table_query = ("""
+        CREATE TABLE IF NOT EXISTS obstacles (
+            name TEXT,
+            type TEXT,
+            lat REAL,
+            lon REAL,
+            elevation REAL,
+            height REAL
+        )
+    """)
+    
+    cursor.execute(create_table_query)
 
 
     conn.commit()
