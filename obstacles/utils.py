@@ -13,6 +13,7 @@ from bs4 import BeautifulSoup
 import requests
 import sqlite3
 import os
+from urllib.parse import urljoin
 
 
 
@@ -21,13 +22,59 @@ class Obstacle(object):
     Container class (incomplete) to be used for temporary obstacle storage.
     """
     def __init__(self, name: str = None , type: str = None, lat: float = None, lon: float = None, elevation: float = None, height: float = None):
-        self.name = name
-        self.type = type
-        self.lat = lat
-        self.lon = lon
-        self.elevation = elevation
-        self.height = height
+        self._name = name
+        self._type = type
+        self._lat = lat
+        self._lon = lon
+        self._elevation = elevation
+        self._height = height
         super().__init__()
+
+    @property
+    def lat(self):
+        return self._lat
+
+    @lat.setter
+    def lat(self, value):
+        if type(value) == float:
+            self._lat = value
+        else:
+            raise ValueError("La latitude doit être un float")
+    
+    @property
+    def lon(self):
+        return self._lon
+
+    @lon.setter
+    def lon(self, value):
+        if type(value) == float:
+            self._lon = value
+        else:
+            raise ValueError("La longitude doit être un float")
+        
+    @property
+    def elevation(self):
+        return self._elevation
+    
+    @elevation.setter
+    def elevation(self, value):
+        if type(value) == float:
+            self._elevation = value
+        else:
+            raise ValueError("L'elevation doit etre un float")
+        
+    
+    @property
+    def height(self):
+        return self._height
+    
+    @height.setter
+    def height(self, value):
+        if type(value) == float:
+            self._height = value
+        else:
+            raise ValueError("height doit etre un float")
+
 
 
 def is_xls(href: str) -> bool:
@@ -52,27 +99,31 @@ def download_file() -> str:
 
     target_href = "VFR_Obstacles_2023_05_18_CRC_68F19134.xls"
 
-    target_a_tag = None
-    for a_tag in soup.find_all("a"):
-        href = a_tag.get("href")
-        if href == target_href:
-            # if is_xls(a_tag):
-            target_a_tag = a_tag
-            break
+    liens = soup.find_all('a')
 
-    if target_a_tag:
-        excel_link = url + target_a_tag["href"]
-        response = requests.get(excel_link) 
-        file_name = os.path.join(tempfile.gettempdir(), target_a_tag["href"])   
-        # pour trouver le nom du fichier 
-        # write e binary = wb
-        with open(file_name, "wb") as f:
-            f.write(response.content)
-        print("Le fichier a ete telecharge! file name:", file_name)
-    else:
-        print("le fichier n'a pas pu trouver sur ce site internet!")
+    for lien in liens:
+        href = lien.get('href')
 
-    return file_name
+        if href is None:
+            continue
+
+        if not (href.startswith('VFR_Obstacles') and href.endswith('.xls')):
+            continue
+
+        file_url = urljoin(url, href)
+        file_response = requests.get(file_url)
+
+        temp_dir = tempfile.mkdtemp()
+        file_name = os.path.join(temp_dir, os.path.basename(href))
+
+        with open(file_name, 'wb') as file:
+            file.write(file_response.content)
+
+        print(f"la fichier a ete telecharcge!, file name: {file_name}")
+        return file_name
+    
+    raise Exception("Aucun fichier correspondant n'a pas été trouvé")
+
 
 
 def parse_coord(coord: str) -> Union[float, None]:
@@ -85,44 +136,35 @@ def parse_coord(coord: str) -> Union[float, None]:
     :param coord: a coordinate as string
     :return: float or None
     """
-    valeur = coord[-1]
-    decimal_degrees = None
-
-    corde = coord.split(".")
-    corde1 = corde[0]
-    corde2 = coord[0]
-    
-    if valeur in ['N','S','W','E'] and corde2 == "-":
+    if coord is None or coord[0] == "-":
         return None
-    
-    elif valeur in ['N', 'S'] and len(corde1) < 8:
-        degrees = float(coord[0:2])
-        minutes = float(coord[2:4])
-        seconds = float(coord[4:-1])
 
-        decimal_degrees = degrees + minutes / 60 + seconds / 3600  
+    valeur = coord[-1]
+    if valeur not in ['N','S','E','W']:
+        return None
 
-    
-    elif valeur in ['E', 'W']:
-        if valeur in ['E']:
+    decimal_degrees = None
+    try:
+        if valeur in ['N', 'S'] and len(coord) >= 7:
+            degrees = float(coord[0:2])
+            minutes = float(coord[2:4])
+            seconds = float(coord[4:-1])
+        elif valeur in ['E', 'W'] and len(coord) >= 8:
             degrees = float(coord[0:3])
             minutes = float(coord[3:5])
             seconds = float(coord[5:-1])
-
-            decimal_degrees = degrees + minutes / 60 + seconds / 3600
         else:
-            degrees = float(coord[0:3])
-            minutes = float(coord[3:5])
-            seconds = float(coord[5:-1])
+            return None
 
-            decimal_degrees = degrees + minutes / 60 + seconds / 3600
+        decimal_degrees = degrees + minutes / 60 + seconds / 3600
+
+        if valeur in ["S", "W"]:
             decimal_degrees *= -1
+    except ValueError:
+        return None
 
-    elif valeur in ["S", "W"] and decimal_degrees is not None:
-        decimal_degrees *= -1
-
-    
     return decimal_degrees
+
      
     
 
@@ -173,7 +215,7 @@ def create_table(conn):
 
 
     conn.commit()
-    conn.close()
+ 
 
     print(f"La base de donnees a été creer!")
 
@@ -193,34 +235,25 @@ def save_objects(items: List[Obstacle], file_name: str) -> str:
     :return: the full path to the created output file
     """
         
-    temp_dir = 'temp'
-    if not os.path.exists(temp_dir):
-        os.makedirs(temp_dir)
+    temp_dir = tempfile.mkdtemp()
 
     db_path = os.path.join(temp_dir, file_name)
     
     conn = sqlite3.connect(db_path)
+
+    create_table(conn)
+    
     cursor = conn.cursor()
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS obstacles (
-            name TEXT,
-            type TEXT,
-            lat REAL,
-            lon REAL,
-            elevation REAL,
-            height REAL
-        )
-    """)
 
-    for item in items:
-        cursor.execute("""
+    items_tube = [(item.name, item.type, item.lat, item.lon, item.elevation, item.height)for item in items]
+    cursor.executemany("""
             INSERT INTO obstacles (name, type, lat, lon, elevation, height)
             VALUES (?, ?, ?, ?, ?, ?)
-        """, (item.name, item.type, item.lat, item.lon, item.elevation, item.height))
+            """, items_tube)
 
     conn.commit()
-    conn.close()
+    
 
     return db_path
 
